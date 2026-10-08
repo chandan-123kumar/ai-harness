@@ -40,7 +40,7 @@ def run():
     from harness_auth import login, token_path
 
     parser = argparse.ArgumentParser(description="AI Harness — a terminal coding assistant")
-    parser.add_argument("--version", action="version", version="ai-harness 0.1.0")
+    parser.add_argument("--version", action="version", version="ai-harness 0.1.1")
     commands = parser.add_subparsers(dest="command")
     auth = commands.add_parser("login", help="Connect your Hugging Face account")
     auth.add_argument("--terminal", action="store_true", help="Enter a hidden token in the terminal")

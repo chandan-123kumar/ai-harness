@@ -1,5 +1,6 @@
 """Offline credential and onboarding integration tests; no real tokens used."""
 import os
+import re
 import stat
 import tempfile
 import threading
@@ -44,6 +45,12 @@ class AuthTests(unittest.TestCase):
         self.assertFalse(auth.token_path().exists())
 
     def test_browser_login_and_cross_origin_rejection(self):
+        for origin_mode in ("same-origin", "null", "missing"):
+            with self.subTest(origin=origin_mode):
+                self.browser_login(origin_mode)
+                auth.token_path().unlink()
+
+    def browser_login(self, origin_mode):
         failures = []
         worker = []
 
@@ -51,15 +58,26 @@ class AuthTests(unittest.TestCase):
             def submit():
                 try:
                     with urlopen(url, timeout=5) as response:
-                        self.assertIn(b'type="password"', response.read())
+                        page = response.read()
+                        self.assertIn(b'type="password"', page)
+                        csrf = re.search(rb'name="csrf" value="([^"]+)"', page).group(1).decode()
                         self.assertEqual(response.headers["Cache-Control"], "no-store")
-                    body = urlencode({"token": "hf_test_only"}).encode()
+                    body = urlencode({"token": "hf_test_only", "csrf": csrf}).encode()
                     with self.assertRaises(HTTPError) as rejected:
                         urlopen(Request(url, body, headers={"Origin": "https://example.com"}), timeout=5)
                     self.assertEqual(rejected.exception.code, 403)
                     self.assertFalse(auth.token_path().exists())
                     origin = "http://" + urlsplit(url).netloc
-                    with urlopen(Request(url, body, headers={"Origin": origin}), timeout=5) as response:
+                    headers = {} if origin_mode == "missing" else {"Origin": "null" if origin_mode == "null" else origin}
+                    for nonce in (None, "wrong"):
+                        fields = {"token": "hf_test_only"}
+                        if nonce is not None:
+                            fields["csrf"] = nonce
+                        with self.assertRaises(HTTPError) as rejected:
+                            urlopen(Request(url, urlencode(fields).encode(), headers=headers), timeout=5)
+                        self.assertEqual(rejected.exception.code, 403)
+                        self.assertFalse(auth.token_path().exists())
+                    with urlopen(Request(url, body, headers=headers), timeout=5) as response:
                         self.assertIn(b"connected", response.read())
                 except Exception as exc:
                     failures.append(exc)

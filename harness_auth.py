@@ -61,6 +61,7 @@ def login(terminal=False):
         print("Token saved on this computer.")
         return token
     secret = secrets.token_urlsafe(32)
+    csrf = secrets.token_urlsafe(32)
     result = []
 
     class Handler(BaseHTTPRequestHandler):
@@ -89,17 +90,22 @@ def login(terminal=False):
 <style>body{background:#111827;color:#eee;font:17px system-ui;margin:8vh auto;padding:24px;max-width:520px}h1{font-size:36px}p{line-height:1.6;color:#cbd5e1}a{color:#93c5fd}input,button{box-sizing:border-box;width:100%;padding:15px;border-radius:9px;margin:12px 0;font:inherit}button{background:#a3e635;border:0;cursor:pointer}small{color:#aab4c3}</style>
 <h1>Connect AI Harness</h1><p>Use your Hugging Face account to start coding.</p>
 <p><a href="https://huggingface.co/settings/tokens" target="_blank" rel="noreferrer">Create a Hugging Face token ↗</a><br>Enable <strong>Make calls to Inference Providers</strong>.</p>
-<form method="post"><label for="token">Hugging Face token</label><input id="token" name="token" type="password" placeholder="hf_…" autocomplete="off" required maxlength="512"><button>Save token and continue</button></form>
-<small>Your token is validated with Hugging Face and stored in a private file on this computer. Inference usage is billed to your Hugging Face account.</small></html>''')
+<form method="post"><input type="hidden" name="csrf" value="CSRF_VALUE"><label for="token">Hugging Face token</label><input id="token" name="token" type="password" placeholder="hf_…" autocomplete="off" required maxlength="512"><button>Save token and continue</button></form>
+<small>Your token is validated with Hugging Face and stored in a private file on this computer. Inference usage is billed to your Hugging Face account.</small></html>'''.replace("CSRF_VALUE", csrf))
 
         def do_POST(self):
-            if not self.allowed() or self.headers.get("Origin") != "http://" + address:
+            # Privacy policies may suppress Origin on a legitimate form POST.
+            # The independent form nonce remains required in every case.
+            if not self.allowed() or self.headers.get("Origin") not in (None, "null", "http://" + address):
                 return self.reply(403, "Request rejected")
             try:
                 length = int(self.headers.get("Content-Length", "0"))
                 if not 0 < length <= 2048:
                     return self.reply(400, "Invalid request size")
-                token = parse_qs(self.rfile.read(length).decode(), max_num_fields=2).get("token", [""])[0].strip()
+                fields = parse_qs(self.rfile.read(length).decode(), max_num_fields=2)
+                if not secrets.compare_digest(fields.get("csrf", [""])[0].encode(), csrf.encode()):
+                    return self.reply(403, "Request rejected. Reopen the setup page and try again.")
+                token = fields.get("token", [""])[0].strip()
                 validate_token(token)
                 save_token(token)
             except (ValueError, OSError):
