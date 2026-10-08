@@ -1,7 +1,7 @@
 # Karyo
 
 A terminal coding assistant using `Qwen/Qwen3-Coder-Next` through Hugging Face's
-Novita provider. Includes conversation memory, file operations, shell execution,
+Featherless AI provider by default. Includes conversation memory, file operations, shell execution,
 and recursive text search.
 
 ## Install
@@ -42,6 +42,75 @@ If a browser cannot open, use the local URL printed in your terminal or run:
 ```sh
 karyo login --terminal
 ```
+
+## Token usage
+
+Choose a provider or model explicitly when needed:
+
+```sh
+uv run karyo --provider featherless-ai --model Qwen/Qwen3-Coder-Next --trace-content
+```
+
+The packaged default is Featherless AI. If it returns HTTP 404, the model or route may be
+unavailable there even if the Hugging Face catalog still lists it. Provider
+selection is explicit; Karyo does not silently switch providers. Failed traces
+include safe error type, HTTP status, and guidance, without raw error bodies.
+
+Each model request prints provider-reported input, output, and total token counts.
+Type `/usage` to see session totals; `/exit` also prints the summary.
+Input usage includes the conversation context sent again on each request, not
+just your latest message. Tool follow-up calls count as separate model requests.
+These counts come from the provider's response `usage` field, not a local tokenizer.
+
+## Session recording and local viewer
+
+Every interactive `karyo` launch immediately creates a session file in
+`~/.local/share/karyo/traces` (or `$XDG_DATA_HOME/karyo/traces`). No tracing flag
+is required. Login, logout and viewer commands do not create chat sessions.
+
+Each session stores numbered user turns, full LLM request/response snapshots,
+model responses, tool calls and tool results, token counts, timing, and session
+start/end events. Requests are written before inference; tool calls are written
+before execution and results immediately afterward. Graceful exit, Ctrl+C and
+errors record a closing status. A forced process kill can leave an open session
+or pending call; those statuses do not prove the process is still running.
+
+Start Karyo in one terminal:
+
+```sh
+uv run karyo
+```
+
+Open the dashboard in another:
+
+```sh
+uv run karyo trace serve
+```
+
+Select a session's **Conversation** entry for the chronological user/model/tool
+history. Select a model call for input/output snapshots, raw JSON, token counts,
+and messages added since the preceding request. The viewer refreshes every second.
+Empty sessions appear immediately, before a user enters a question.
+
+Use `--trace traces/session.jsonl` to select a different output file, and
+`karyo trace serve --directory traces` to view that directory. `--trace-content`
+remains accepted for compatibility; full content is now recorded by default.
+Files append across runs with distinct session IDs. New files use owner-only
+permissions. Prompts and tool results may contain private data; authentication
+headers are not recorded, but secrets within conversation content are not redacted.
+
+Each JSONL line is an event. Match `session_id`, `turn`, `request`, and tool call
+IDs to relate events. Failed requests include safe diagnostic metadata. Missing
+usage is `null`, not zero. Inputs are SDK-level arguments, not the provider's
+internal prompt template. `jq . path/to/session.jsonl` provides a readable view.
+
+The viewer is read-only, binds to `127.0.0.1`, and requires its temporary secret
+URL. `--no-browser` disables automatic opening and `--port 8765` chooses a port.
+Ctrl+C stops the viewer independently of Karyo. It reads `.jsonl` files directly
+in the selected directory, supports older traces, and skips incomplete lines.
+This first version reloads files on each poll; separate large archives into
+another directory. Recording sessions does not automatically resume conversation
+memory when Karyo restarts.
 
 ## Credentials
 
@@ -84,10 +153,29 @@ Python 3.10+ is supported. The installer selects Python 3.13.
 ```sh
 uv sync --locked
 uv run karyo
-uv run python -m unittest -v test_tools test_auth
+uv run python -m unittest -v test_tools test_auth test_usage test_trace_viewer test_config test_sessions
 uv build
 ```
 
 The CLI operates in the directory where you launch it. Conversation memory lasts
-for the current session. Model/provider settings are currently defined in
-`cli.py` and `inference.py`; `config.json` does not configure the CLI.
+for the current session.
+
+Configuration loads in this order (later values override earlier ones):
+
+1. Packaged `karyo_config/defaults.json`.
+2. `~/.config/karyo/config.json` (or `$XDG_CONFIG_HOME/karyo/config.json`).
+3. `config.json` in the current directory, or the file supplied with `--config`.
+4. Explicit `--provider` and `--model` options.
+
+```json
+{
+  "provider": "featherless-ai",
+  "model": "Qwen/Qwen3-Coder-Next",
+  "max_tokens": 256,
+  "timeout_seconds": 60
+}
+```
+
+Overrides can contain just the keys you want to change. `max_tokens` limits each
+model response; increase it if longer answers or tool arguments are needed.
+Tokens remain in the credential store or environment, not this configuration.
