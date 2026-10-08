@@ -1,6 +1,6 @@
 [project]
-name = "ai-harness"
-version = "0.1.1"
+name = "karyo"
+version = "0.2.0"
 description = "A minimal Python coding-agent harness with local tools."
 readme = "README.md"
 requires-python = ">=3.10"
@@ -14,7 +14,7 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project.scripts]
-ai-harness = "cli:run"
+karyo = "cli:run"
 
 [tool.setuptools]
 py-modules = ["cli", "inference", "harness_auth"]

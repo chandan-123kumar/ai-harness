@@ -1,5 +1,5 @@
 #!/bin/sh
-# Install AI Harness on macOS or Linux without cloning the repository.
+# Install Karyo on macOS or Linux without cloning the repository.
 set -eu
 case "$(uname -s)" in
   Darwin|Linux) ;;
@@ -13,9 +13,9 @@ if ! command -v uv >/dev/null 2>&1; then
   sh "$installer"
   export PATH="$HOME/.local/bin:$PATH"
 fi
-uv tool install --python 3.13 --from 'https://github.com/chandan-123kumar/ai-harness/archive/refs/heads/main.zip' ai-harness
+uv tool install --python 3.13 --from 'https://github.com/chandan-123kumar/karyo/archive/refs/heads/main.zip' karyo
 uv tool update-shell
 bin_dir=$(uv tool dir --bin)
-echo 'AI Harness installed. Connecting your Hugging Face account…'
-"$bin_dir/ai-harness" login
-echo 'Open a new terminal, enter your project folder, and run: ai-harness'
+echo 'Karyo installed. Connecting your Hugging Face account…'
+"$bin_dir/karyo" login
+echo 'Open a new terminal, enter your project folder, and run: karyo'

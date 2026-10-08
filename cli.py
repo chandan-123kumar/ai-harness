@@ -37,26 +37,26 @@ def main(msg, memory, client=None):
 
 def run():
     import argparse
-    from harness_auth import login, token_path
+    from harness_auth import login, logout
 
-    parser = argparse.ArgumentParser(description="AI Harness — a terminal coding assistant")
-    parser.add_argument("--version", action="version", version="ai-harness 0.1.1")
+    parser = argparse.ArgumentParser(description="Karyo — a terminal coding assistant")
+    parser.add_argument("--version", action="version", version="karyo 0.2.0")
     commands = parser.add_subparsers(dest="command")
     auth = commands.add_parser("login", help="Connect your Hugging Face account")
     auth.add_argument("--terminal", action="store_true", help="Enter a hidden token in the terminal")
-    commands.add_parser("logout", help="Remove the token saved by AI Harness")
+    commands.add_parser("logout", help="Remove the token saved by Karyo")
     args = parser.parse_args()
     try:
         if args.command == "login":
             login(terminal=args.terminal)
             return 0
         if args.command == "logout":
-            token_path().unlink(missing_ok=True)
+            logout()
             print("Saved token removed. HF_TOKEN environment variables and .env files are unchanged.")
             return 0
         memory = Memory()
         client = create_client()
-        print("AI Harness · Type /exit to quit.")
+        print("Karyo · Type /exit to quit.")
         print("This agent can write files and run shell commands with your user permissions.")
         while True:
             message = input(">> ").strip()
@@ -68,7 +68,7 @@ def run():
         print("\nGoodbye.")
         return 0
     except Exception:
-        print("Unable to complete the request. Check your connection, HF token and inference credits. Run ai-harness login to reconnect.")
+        print("Unable to complete the request. Check your connection, HF token and inference credits. Run karyo login to reconnect.")
         return 1
 
 

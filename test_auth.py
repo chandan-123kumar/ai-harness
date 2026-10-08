@@ -38,6 +38,17 @@ class AuthTests(unittest.TestCase):
                 auth.validate_token("invalid")
             network.assert_not_called()
 
+    def test_legacy_token_survives_rename_and_logout_clears_both(self):
+        legacy = auth.token_path("ai-harness")
+        legacy.parent.mkdir(parents=True)
+        legacy.write_text("hf_legacy_test")
+        self.assertEqual(auth.read_token(), "hf_legacy_test")
+        auth.save_token("hf_karyo_test")
+        self.assertEqual(auth.read_token(), "hf_karyo_test")
+        auth.logout()
+        self.assertIsNone(auth.read_token())
+        self.assertFalse(legacy.exists())
+
     def test_terminal_validates_before_saving(self):
         with patch("sys.stdin.isatty", return_value=True), patch("getpass.getpass", return_value="hf_invalid"), patch("harness_auth.validate_token", side_effect=ValueError("invalid")):
             with self.assertRaises(ValueError):

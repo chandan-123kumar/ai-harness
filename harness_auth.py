@@ -13,8 +13,8 @@ from urllib.parse import parse_qs
 from urllib.request import Request, urlopen
 
 
-def token_path():
-    return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / "ai-harness" / "token"
+def token_path(app="karyo"):
+    return Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")) / app / "token"
 
 
 def read_token():
@@ -24,7 +24,15 @@ def read_token():
     try:
         return token_path().read_text().strip() or None
     except FileNotFoundError:
-        return None
+        try:
+            return token_path("ai-harness").read_text().strip() or None
+        except FileNotFoundError:
+            return None
+
+
+def logout():
+    for app in ("karyo", "ai-harness"):
+        token_path(app).unlink(missing_ok=True)
 
 
 def save_token(token):
@@ -86,9 +94,9 @@ def login(terminal=False):
             if not self.allowed():
                 return self.reply(404, "Not found")
             self.reply(200, '''<!doctype html><html lang="en"><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect AI Harness</title>
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>Connect Karyo</title>
 <style>body{background:#111827;color:#eee;font:17px system-ui;margin:8vh auto;padding:24px;max-width:520px}h1{font-size:36px}p{line-height:1.6;color:#cbd5e1}a{color:#93c5fd}input,button{box-sizing:border-box;width:100%;padding:15px;border-radius:9px;margin:12px 0;font:inherit}button{background:#a3e635;border:0;cursor:pointer}small{color:#aab4c3}</style>
-<h1>Connect AI Harness</h1><p>Use your Hugging Face account to start coding.</p>
+<h1>Connect Karyo</h1><p>Use your Hugging Face account to start coding.</p>
 <p><a href="https://huggingface.co/settings/tokens" target="_blank" rel="noreferrer">Create a Hugging Face token ↗</a><br>Enable <strong>Make calls to Inference Providers</strong>.</p>
 <form method="post"><input type="hidden" name="csrf" value="CSRF_VALUE"><label for="token">Hugging Face token</label><input id="token" name="token" type="password" placeholder="hf_…" autocomplete="off" required maxlength="512"><button>Save token and continue</button></form>
 <small>Your token is validated with Hugging Face and stored in a private file on this computer. Inference usage is billed to your Hugging Face account.</small></html>'''.replace("CSRF_VALUE", csrf))
@@ -121,13 +129,13 @@ def login(terminal=False):
         address = "127.0.0.1:" + str(server.server_port)
         url = "http://" + address + "/" + secret
         print("Open this local setup page: " + url)
-        print("Waiting up to 5 minutes. Ctrl+C cancels; use ai-harness login --terminal without a browser.")
+        print("Waiting up to 5 minutes. Ctrl+C cancels; use karyo login --terminal without a browser.")
         webbrowser.open(url)
         server.timeout = 1
         deadline = time.monotonic() + 300
         while not result and time.monotonic() < deadline:
             server.handle_request()
     if not result:
-        raise ValueError("Login timed out. Run ai-harness login to try again.")
+        raise ValueError("Login timed out. Run karyo login to try again.")
     print("Token saved on this computer.")
     return result[0]
