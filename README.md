@@ -1,48 +1,89 @@
-# AI harness
+# AI Harness
 
-A minimal Python coding-agent harness using `Qwen/Qwen3-Coder-Next` through
-Hugging Face with the Novita backend. Includes conversation memory, a tool
-registry, file operations, shell execution, and recursive text search.
+A terminal coding assistant using `Qwen/Qwen3-Coder-Next` through Hugging Face's
+Novita provider. Includes conversation memory, file operations, shell execution,
+and recursive text search.
 
-Managed with [uv](https://docs.astral.sh/uv/guides/projects/). Python 3.10+ is
-supported; `.python-version` selects Python 3.13 for local development.
+## Install
 
-```sh
-uv sync
-uv run cli.py
-```
-
-Use a Hugging Face token with **Make calls to Inference Providers** permission.
-Before running the CLI, set the token in `.env` alongside `inference.py`:
-
-```dotenv
-HF_TOKEN=your_hugging_face_token
-```
-
-The CLI loads this file automatically. An existing `HF_TOKEN` environment
-variable takes precedence. `.env` is ignored by Git. Never put a real token in
-source code or chat.
-Check your HF account credits/billing before use.
-
-`pyproject.toml` declares dependencies. The first successful `uv sync` creates
-`.venv` and `uv.lock`, which locks the resolved versions. Commit `uv.lock` once
-generated, then use `uv sync --locked` for reproducible installs. `uv run` uses
-the project's `.venv`; manual activation is not needed. Add dependencies with
-`uv add <package>`.
-
-Run offline checks:
+On **macOS, Linux, or Windows with WSL**, run:
 
 ```sh
-uv run python -m unittest -v test_tools
+curl -fsSL https://raw.githubusercontent.com/chandan-123kumar/ai-harness/main/install.sh | sh
 ```
 
-`connect.py` is a separate single-request connection check. Its `config.json`
-controls the model, provider, output limit, and timeout. These settings do not
-configure the interactive `cli.py` loop. Ripgrep (`rg`) must be installed
-separately for the search tool.
+The installer installs [uv](https://docs.astral.sh/uv/), provisions Python 3.13
+if needed, installs the `ai-harness` command, and opens a browser setup page.
+Paste your own [Hugging Face token](https://huggingface.co/settings/tokens) with
+**Make calls to Inference Providers** permission and click **Save token and continue**.
+Hugging Face inference credits/billing are required.
 
-On 2026-10-05, the [HF provider catalog](https://huggingface.co/inference/models)
-listed Novita at $0.20 per million input tokens and $1.50 per million output
-tokens, with tool calling supported. Prices may change. The
-[model](https://huggingface.co/Qwen/Qwen3-Coder-Next) uses Apache 2.0.
-Tool dispatch is implemented; a saved live model/tool/model trace is still pending.
+Open a new terminal after installation:
+
+```sh
+cd your-project
+ai-harness
+```
+
+Type `/exit` or press Ctrl+C to quit. This agent can write files and execute shell
+commands with your user permissions; use it in projects you trust and keep backups.
+Native Windows is not supported by the shell tool; use WSL.
+
+Already have uv? Install directly:
+
+```sh
+uv tool install --python 3.13 --from https://github.com/chandan-123kumar/ai-harness/archive/refs/heads/main.zip ai-harness
+uv tool update-shell
+```
+
+The browser setup opens automatically on first launch if no token is configured.
+If a browser cannot open, use the local URL printed in your terminal or run:
+
+```sh
+ai-harness login --terminal
+```
+
+## Credentials
+
+The setup page runs only on `127.0.0.1`, closes after a successful submission,
+and expires after five minutes. Tokens are sent to Hugging Face to validate them;
+AI Harness has no hosted token collection service. The saved token lives in
+`~/.config/ai-harness/token` (or `$XDG_CONFIG_HOME/ai-harness/token`) with owner-only
+file permissions. This file is plaintext, not an encrypted keychain.
+
+`HF_TOKEN` from the environment takes precedence, followed by a `.env` in the
+current working directory, followed by the saved token. Tokens are not included
+in the installed package. Token validation confirms the account credential;
+provider permission, model availability, and billing are checked when inference runs.
+
+```sh
+ai-harness login     # Replace the saved token through the browser
+ai-harness logout    # Delete the saved token (does not unset HF_TOKEN or edit .env)
+```
+
+## Update or uninstall
+
+```sh
+uv tool upgrade ai-harness
+uv tool uninstall ai-harness
+```
+
+Run `ai-harness logout` before uninstalling to remove the saved credential.
+Install [ripgrep](https://github.com/BurntSushi/ripgrep#installation) for the search
+tool (`brew install ripgrep` on macOS or `sudo apt install ripgrep` on Ubuntu/WSL).
+Other tools work without it.
+
+## Development
+
+Python 3.10+ is supported. The installer selects Python 3.13.
+
+```sh
+uv sync --locked
+uv run ai-harness
+uv run python -m unittest -v test_tools test_auth
+uv build
+```
+
+The CLI operates in the directory where you launch it. Conversation memory lasts
+for the current session. Model/provider settings are currently defined in
+`cli.py` and `inference.py`; `config.json` does not configure the CLI.

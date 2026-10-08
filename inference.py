@@ -1,13 +1,13 @@
-import os
 from pathlib import Path
 
 from dotenv import load_dotenv
 from huggingface_hub import InferenceClient
+from harness_auth import read_token, login
 
 def create_client(provider: str = "novita", timeout: float = 60):
-    load_dotenv(Path(__file__).with_name(".env"), override=False)
-    token = os.getenv("HF_TOKEN")
+    load_dotenv(Path.cwd() / ".env", override=False)
+    token = read_token()
     if not token:
-        raise ValueError("Set HF_TOKEN in .env or your environment before starting the CLI.")
+        token = login()
 
     return InferenceClient(provider=provider, api_key=token, timeout=timeout)

@@ -4,7 +4,7 @@ from fnmatch import fnmatchcase
 from pathlib import Path
 
 
-WORKSPACE_ROOT = Path(__file__).resolve().parent.parent
+WORKSPACE_ROOT = Path.cwd().resolve()
 
 
 def write_file(path, content, overwrite=False):

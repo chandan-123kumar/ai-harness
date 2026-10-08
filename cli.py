@@ -6,7 +6,7 @@ from tools.registry import get_tool_schemas
 from tools.dispatcher import dispatch_tool_call
 
 
-MAX_TOOL_ROUNDS = 1
+MAX_TOOL_ROUNDS = 10
 
 
 def main(msg, memory, client=None):
@@ -35,8 +35,42 @@ def main(msg, memory, client=None):
     print("Stopped after reaching the tool-round limit.")
 
 
+def run():
+    import argparse
+    from harness_auth import login, token_path
+
+    parser = argparse.ArgumentParser(description="AI Harness — a terminal coding assistant")
+    parser.add_argument("--version", action="version", version="ai-harness 0.1.0")
+    commands = parser.add_subparsers(dest="command")
+    auth = commands.add_parser("login", help="Connect your Hugging Face account")
+    auth.add_argument("--terminal", action="store_true", help="Enter a hidden token in the terminal")
+    commands.add_parser("logout", help="Remove the token saved by AI Harness")
+    args = parser.parse_args()
+    try:
+        if args.command == "login":
+            login(terminal=args.terminal)
+            return 0
+        if args.command == "logout":
+            token_path().unlink(missing_ok=True)
+            print("Saved token removed. HF_TOKEN environment variables and .env files are unchanged.")
+            return 0
+        memory = Memory()
+        client = create_client()
+        print("AI Harness · Type /exit to quit.")
+        print("This agent can write files and run shell commands with your user permissions.")
+        while True:
+            message = input(">> ").strip()
+            if message in ("/exit", "/quit"):
+                return 0
+            if message:
+                main(message, memory, client)
+    except (EOFError, KeyboardInterrupt):
+        print("\nGoodbye.")
+        return 0
+    except Exception:
+        print("Unable to complete the request. Check your connection, HF token and inference credits. Run ai-harness login to reconnect.")
+        return 1
+
+
 if __name__ == "__main__":
-    memory = Memory()
-    client = create_client()
-    while True:
-        main(input(">> "), memory, client)
+    raise SystemExit(run())
