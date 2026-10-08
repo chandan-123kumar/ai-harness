@@ -1,6 +1,9 @@
 from dataclasses import asdict
+from time import perf_counter
+from token_usage import TokenUsage, snapshot
 
-from inference import create_client
+from inference import create_client, error_details
+from karyo_config import load_config, ConfigError
 from memory.memory import Memory
 from tools.registry import get_tool_schemas
 from tools.dispatcher import dispatch_tool_call
@@ -9,28 +12,50 @@ from tools.dispatcher import dispatch_tool_call
 MAX_TOOL_ROUNDS = 10
 
 
-def main(msg, memory, client=None):
+def main(msg, memory, client=None, usage=None, model=None, max_tokens=None):
+    if usage is not None:
+        usage.user_query(msg)
+    if model is None or max_tokens is None:
+        config = load_config()
+        model = config['model'] if model is None else model
+        max_tokens = config['max_tokens'] if max_tokens is None else max_tokens
     client = client if client is not None else create_client()
     memory.save_to_memory("user", msg)
     for _ in range(MAX_TOOL_ROUNDS):
-        response = client.chat.completions.create(
-            model="Qwen/Qwen3-Coder-Next",
-            messages=memory.get_memory(),
-            tools=get_tool_schemas(),
-        )
+        request = {
+            "model": model,
+            "messages": memory.get_memory(),
+            "tools": get_tool_schemas(),
+            "max_tokens": max_tokens,
+        }
+        traced_request = snapshot(request) if usage is not None and usage.include_content else None
+        if usage is not None:
+            usage.start(traced_request)
+        started = perf_counter()
+        try:
+            response = client.chat.completions.create(**request)
+        except Exception as exc:
+            if usage is not None:
+                usage.record(elapsed_ms=(perf_counter() - started) * 1000, status="error", request=traced_request, error=error_details(exc))
+            raise
+        if usage is not None:
+            usage.record(response, elapsed_ms=(perf_counter() - started) * 1000, request=traced_request)
         message = response.choices[0].message
-        print(message)
         saved = {"role": "assistant", "content": message.content}
         if message.tool_calls:
             saved["tool_calls"] = [asdict(call) for call in message.tool_calls]
         memory.save_message(saved)
+        if usage is not None and usage.include_content:
+            usage.event("model_response", request=len(usage.records), message=saved)
         if not message.tool_calls:
             print(message.content or "[No text returned]")
             return
         for call in message.tool_calls:
-            print(call)
+            if usage is not None and usage.include_content:
+                usage.event("tool_call", request=len(usage.records), tool_call=asdict(call))
             result = dispatch_tool_call(call)
-            print(result)
+            if usage is not None and usage.include_content:
+                usage.event("tool_result", request=len(usage.records), result=result)
             memory.save_message(result)
     print("Stopped after reaching the tool-round limit.")
 
@@ -41,12 +66,29 @@ def run():
 
     parser = argparse.ArgumentParser(description="Karyo — a terminal coding assistant")
     parser.add_argument("--version", action="version", version="karyo 0.2.1")
+    parser.add_argument("--trace", metavar="PATH", help="Save the session to this JSONL file")
+    parser.add_argument("--provider", help="Override the configured inference provider")
+    parser.add_argument("--model", help="Override the configured model ID")
+    parser.add_argument("--config", metavar="PATH", help="Use this JSON configuration instead of ./config.json")
+    parser.add_argument("--trace-content", action="store_true", help="Compatibility flag: session content is now recorded by default")
     commands = parser.add_subparsers(dest="command")
     auth = commands.add_parser("login", help="Connect your Hugging Face account")
     auth.add_argument("--terminal", action="store_true", help="Enter a hidden token in the terminal")
     commands.add_parser("logout", help="Remove the token saved by Karyo")
+    trace = commands.add_parser("trace", help="Inspect local LLM traces")
+    trace_commands = trace.add_subparsers(dest="trace_command", required=True)
+    serve = trace_commands.add_parser("serve", help="Open the local trace viewer")
+    serve.add_argument("--directory", help="Directory containing JSONL traces")
+    serve.add_argument("--port", type=int, default=0, help="Local port (default: automatically chosen)")
+    serve.add_argument("--no-browser", action="store_true")
     args = parser.parse_args()
+    usage = None
+    session_status = "closed"
     try:
+        if args.command == "trace":
+            from trace_viewer import serve
+            serve(args.directory, args.port, not args.no_browser)
+            return 0
         if args.command == "login":
             login(terminal=args.terminal)
             return 0
@@ -55,24 +97,42 @@ def run():
             print("Saved token removed. HF_TOKEN environment variables and .env files are unchanged.")
             return 0
         memory = Memory()
-        client = create_client()
-        print("Karyo · Type /exit to quit.")
+        usage = TokenUsage(args.trace, include_content=True)
+        usage.begin_session()
+        config = load_config(args.config)
+        usage.event("session_configured", provider=args.provider or config['provider'], model=args.model or config['model'])
+        if usage.trace_path:
+            print(f"Trace: {usage.trace_path}")
+        client = create_client(provider=args.provider or config['provider'], timeout=config['timeout_seconds'])
+        print("Karyo · Type /usage for token totals or /exit to quit.")
         print("This agent can write files and run shell commands with your user permissions.")
         while True:
             message = input(">> ").strip()
             if message in ("/exit", "/quit"):
+                print(usage.summary())
                 return 0
+            if message == "/usage":
+                print(usage.summary())
+                continue
             if message:
-                main(message, memory, client)
+                main(message, memory, client, usage, model=args.model or config['model'], max_tokens=config['max_tokens'])
     except (EOFError, KeyboardInterrupt):
+        session_status = "interrupted"
         print("\nGoodbye.")
         return 0
-    except LoginError as exc:
+    except (LoginError, ConfigError) as exc:
+        session_status = "error"
         print(str(exc))
         return 1
-    except Exception:
-        print("Unable to complete the request. Check your connection, HF token and inference credits. Run karyo login to reconnect.")
+    except Exception as exc:
+        session_status = "error"
+        details = error_details(exc)
+        status = f" HTTP {details['http_status']}" if details['http_status'] else ""
+        print(f"{details['type']}{status}: {details['message']}")
         return 1
+    finally:
+        if usage is not None:
+            usage.end_session(session_status)
 
 
 if __name__ == "__main__":
