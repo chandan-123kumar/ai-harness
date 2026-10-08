@@ -1,0 +1,6 @@
+{
+  "model": "Qwen/Qwen3-Coder-Next",
+  "provider": "novita",
+  "max_tokens": 256,
+  "timeout_seconds": 60
+}
