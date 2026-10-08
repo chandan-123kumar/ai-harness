@@ -165,15 +165,17 @@ wheels = [
 
 [[package]]
 name = "karyo"
-version = "0.2.0"
+version = "0.2.1"
 source = { editable = "." }
 dependencies = [
+    { name = "certifi" },
     { name = "huggingface-hub" },
     { name = "python-dotenv" },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "certifi", specifier = ">=2024.2.2" },
     { name = "huggingface-hub", specifier = "==1.26.0" },
     { name = "python-dotenv", specifier = ">=1.0" },
 ]

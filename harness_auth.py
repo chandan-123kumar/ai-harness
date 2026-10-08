@@ -3,14 +3,22 @@ import getpass
 import json
 import os
 import secrets
+import ssl
 import sys
 import tempfile
 import time
 import webbrowser
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from html import escape
+from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qs
 from urllib.request import Request, urlopen
+import certifi
+
+
+class LoginError(ValueError):
+    """A safe, user-facing authentication error without credential details."""
 
 
 def token_path(app="karyo"):
@@ -50,13 +58,20 @@ def save_token(token):
 
 def validate_token(token):
     if not token.startswith("hf_") or any(c.isspace() for c in token):
-        raise ValueError("Enter a Hugging Face user access token starting with hf_.")
+        raise LoginError("Enter a Hugging Face user access token starting with hf_.")
     request = Request("https://huggingface.co/api/whoami-v2", headers={"Authorization": "Bearer " + token})
     try:
-        with urlopen(request, timeout=15) as response:
+        context = ssl.create_default_context(cafile=certifi.where())
+        with urlopen(request, timeout=15, context=context) as response:
             json.load(response)
-    except Exception:
-        raise ValueError("Could not validate token. Check the token and your internet connection.") from None
+    except HTTPError as exc:
+        if exc.code in (401, 403):
+            raise LoginError("Hugging Face rejected this token. Check that it is valid and has not been revoked.") from None
+        raise LoginError("Hugging Face is temporarily unavailable. Please retry shortly.") from None
+    except (URLError, OSError):
+        raise LoginError("Could not connect securely to Hugging Face. Check your connection or proxy settings and retry.") from None
+    except ValueError:
+        raise LoginError("Hugging Face returned an unexpected response. Please retry shortly.") from None
 
 
 def login(terminal=False):
@@ -115,9 +130,14 @@ def login(terminal=False):
                     return self.reply(403, "Request rejected. Reopen the setup page and try again.")
                 token = fields.get("token", [""])[0].strip()
                 validate_token(token)
-                save_token(token)
+            except LoginError as exc:
+                return self.reply(400, escape(str(exc)) + '<p><a href="">Return to setup</a></p>')
             except (ValueError, OSError):
-                return self.reply(400, "Unable to save token. Check your token, connection and file permissions, then go back to retry.")
+                return self.reply(400, 'Invalid form submission. <a href="">Return to setup</a>')
+            try:
+                save_token(token)
+            except OSError:
+                return self.reply(500, 'Cannot write the local token file. Check permissions on your Karyo config directory. <a href="">Retry</a>')
             result.append(token)
             self.reply(200, "<h1>You're connected.</h1><p>Close this tab and return to your terminal.</p>")
 

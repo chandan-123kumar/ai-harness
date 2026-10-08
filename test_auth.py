@@ -1,13 +1,14 @@
 """Offline credential and onboarding integration tests; no real tokens used."""
 import os
 import re
+import ssl
 import stat
 import tempfile
 import threading
 import unittest
 from pathlib import Path
-from unittest.mock import patch
-from urllib.error import HTTPError
+from unittest.mock import patch, MagicMock
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit
 from urllib.request import Request, urlopen
 
@@ -37,6 +38,28 @@ class AuthTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 auth.validate_token("invalid")
             network.assert_not_called()
+
+    def test_validation_uses_verified_certificate_bundle(self):
+        response = MagicMock()
+        response.__enter__.return_value.read.return_value = b'{"name":"test"}'
+        with patch("harness_auth.urlopen", return_value=response) as network:
+            auth.validate_token("hf_test_only")
+        context = network.call_args.kwargs["context"]
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(context.check_hostname)
+        self.assertGreater(context.cert_store_stats()["x509_ca"], 0)
+
+    def test_validation_errors_do_not_expose_credentials(self):
+        for error, expected in (
+            (HTTPError("https://huggingface.co", 401, "hf_private", {}, None), "rejected"),
+            (HTTPError("https://huggingface.co", 503, "hf_private", {}, None), "unavailable"),
+            (URLError("hf_private"), "connect securely"),
+        ):
+            with self.subTest(expected=expected), patch("harness_auth.urlopen", side_effect=error):
+                with self.assertRaises(auth.LoginError) as raised:
+                    auth.validate_token("hf_private")
+                self.assertIn(expected, str(raised.exception))
+                self.assertNotIn("hf_private", str(raised.exception))
 
     def test_legacy_token_survives_rename_and_logout_clears_both(self):
         legacy = auth.token_path("ai-harness")

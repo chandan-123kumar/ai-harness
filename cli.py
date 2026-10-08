@@ -37,10 +37,10 @@ def main(msg, memory, client=None):
 
 def run():
     import argparse
-    from harness_auth import login, logout
+    from harness_auth import login, logout, LoginError
 
     parser = argparse.ArgumentParser(description="Karyo — a terminal coding assistant")
-    parser.add_argument("--version", action="version", version="karyo 0.2.0")
+    parser.add_argument("--version", action="version", version="karyo 0.2.1")
     commands = parser.add_subparsers(dest="command")
     auth = commands.add_parser("login", help="Connect your Hugging Face account")
     auth.add_argument("--terminal", action="store_true", help="Enter a hidden token in the terminal")
@@ -67,6 +67,9 @@ def run():
     except (EOFError, KeyboardInterrupt):
         print("\nGoodbye.")
         return 0
+    except LoginError as exc:
+        print(str(exc))
+        return 1
     except Exception:
         print("Unable to complete the request. Check your connection, HF token and inference credits. Run karyo login to reconnect.")
         return 1
