@@ -65,7 +65,7 @@ def run():
     from harness_auth import login, logout, LoginError
 
     parser = argparse.ArgumentParser(description="Karyo — a terminal coding assistant")
-    parser.add_argument("--version", action="version", version="karyo 0.2.1")
+    parser.add_argument("--version", action="version", version="karyo 0.3.0")
     parser.add_argument("--trace", metavar="PATH", help="Save the session to this JSONL file")
     parser.add_argument("--provider", help="Override the configured inference provider")
     parser.add_argument("--model", help="Override the configured model ID")
